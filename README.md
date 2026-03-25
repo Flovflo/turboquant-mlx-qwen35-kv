@@ -59,6 +59,58 @@ TurboQuant vs current MLX KV quantization on this benchmark:
 - `-18.5%` generation wall time
 - cache size within `+0.73%`
 
+### Why `-26.0% wall time` and `-43.7% cache` matter
+
+These two numbers are real, but they describe different things:
+
+- `-26.0% generation wall time` is end-to-end generation time on this benchmark, including prefill and decode
+- `-43.7% KV cache size` is the benchmark-visible cache footprint, based on allocated cache bytes
+
+For the `2048 / 8` benchmark:
+
+```text
+baseline benchmark cache      80.12 MB
+turboquant benchmark cache    45.10 MB
+delta                         -43.7%
+```
+
+But Qwen3.5 is a mixed architecture:
+
+- `40` layers total
+- `full_attention_interval=4`
+- only `10` layers use the full-attention KV cache path
+- the other `30` layers use `ArraysCache` and are not quantized by this repo
+
+If you split the actual used cache state after generation, the picture is:
+
+```text
+baseline used-state total     75.02 MB
+  ArraysCache                 32.93 MB
+  full-attention KV           42.09 MB
+
+turboquant used-state total   45.10 MB
+  ArraysCache                 32.93 MB
+  TurboQuant KV               12.17 MB
+```
+
+That means:
+
+- the full-attention KV portion is reduced by about `71.1%`
+- the end-to-end used cache drops by about `39.9%`
+- the headline `-43.7%` is slightly larger because MLX baseline `KVCache` grows in blocks of `256` tokens, so the benchmark sees some allocation slack too
+
+The wall-time story also needs one nuance:
+
+- the reported `-26.0%` is the `3-trial` average
+- MLX has a noticeable warmup effect on the first run
+- on the warm runs only (`runs 2-3`), the same benchmark is still faster, but the delta is closer to `-15.4%`
+
+So the honest interpretation is:
+
+- short context: TurboQuant is mostly a memory optimization
+- medium context like `2048`: TurboQuant reduces memory and improves runtime
+- the remaining gap to the Google TurboQuant blog comes from MLX vs CUDA/H100, the mixed Qwen3.5 cache architecture, and the fact that this repo is still a `TurboQuant-inspired` prototype rather than a full PolarQuant + QJL implementation
+
 ### Short-context reality check
 
 `128 prompt / 8 gen`, `3 trials`
