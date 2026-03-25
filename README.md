@@ -32,21 +32,26 @@ This repo focuses on the runtime KV cache path only. It does not touch the model
 
 ## Quick results
 
-Sequential benchmark on the exact target model with `128 prompt tokens / 8 generation tokens`:
+Sequential benchmark on the exact target model with `128 prompt tokens / 8 generation tokens`.
+
+Steady-state view, averaged from runs 2 and 3 after MLX warmup:
 
 ```text
 backend      prompt_tps   generation_tps   peak_memory_gb   cache_bytes
-baseline     46.51        38.18            19.750           38174720
-mlx_quant    65.42        36.97            19.750           33709440
-turboquant   50.87        30.73            19.709           33717540
+baseline     257.33       33.84            -                38.17 MB
+mlx_quant    260.58       32.95            -                33.71 MB
+turboquant   251.84       28.04            -                33.72 MB
 ```
 
 What that means right now:
 
 - `turboquant` already closes the KV memory gap versus baseline
 - `turboquant` lands almost exactly on the same KV footprint as `mlx_quant`
+- `mlx_quant` and `turboquant` both reduce KV cache footprint by about `11.7%` versus baseline on this setup
 - `mlx_quant` is still ahead in decode throughput
 - the repo is already useful to install, test, compare, and iterate on
+
+Cold-start 3-trial average is also recorded in the benchmark JSON artifacts.
 
 ## Install and try
 
@@ -282,6 +287,9 @@ Saved artifacts:
 - `benchmarks/mlx_quant_128_8.json`
 - `benchmarks/turboquant_128_8.json`
 - `benchmarks/summary_128_8.json`
+- `benchmarks/baseline_128_8_trials3.json`
+- `benchmarks/mlx_quant_128_8_trials3.json`
+- `benchmarks/turboquant_128_8_trials3.json`
 
 ## What the prototype implements
 

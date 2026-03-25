@@ -1,0 +1,41 @@
+[
+  {
+    "prompt_tokens": 128,
+    "generation_tokens": 8,
+    "prompt_tps": 187.3881305843423,
+    "generation_tps": 33.57545434165775,
+    "peak_memory_gb": 19.750002440333333,
+    "cache_bytes": 38174720,
+    "backend": "baseline",
+    "trials": 3,
+    "runs": [
+      {
+        "prompt_tokens": 128,
+        "generation_tokens": 8,
+        "prompt_tps": 47.50047535266239,
+        "generation_tps": 33.04700062574647,
+        "peak_memory_gb": 19.749652915,
+        "cache_bytes": 38174720,
+        "backend": "baseline"
+      },
+      {
+        "prompt_tokens": 128,
+        "generation_tokens": 8,
+        "prompt_tps": 258.60869399470295,
+        "generation_tps": 33.603808991785634,
+        "peak_memory_gb": 19.750177203,
+        "cache_bytes": 38174720,
+        "backend": "baseline"
+      },
+      {
+        "prompt_tokens": 128,
+        "generation_tokens": 8,
+        "prompt_tps": 256.0552224056615,
+        "generation_tps": 34.07555340744115,
+        "peak_memory_gb": 19.750177203,
+        "cache_bytes": 38174720,
+        "backend": "baseline"
+      }
+    ]
+  }
+]

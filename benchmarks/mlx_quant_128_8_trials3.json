@@ -1,0 +1,41 @@
+[
+  {
+    "prompt_tokens": 128,
+    "generation_tokens": 8,
+    "prompt_tps": 192.48067612590782,
+    "generation_tps": 33.233433160704266,
+    "peak_memory_gb": 19.750002440333333,
+    "cache_bytes": 33709440,
+    "backend": "mlx_quant",
+    "trials": 3,
+    "runs": [
+      {
+        "prompt_tokens": 128,
+        "generation_tokens": 8,
+        "prompt_tps": 56.27479951827616,
+        "generation_tps": 33.80421549132701,
+        "peak_memory_gb": 19.749652915,
+        "cache_bytes": 33709440,
+        "backend": "mlx_quant"
+      },
+      {
+        "prompt_tokens": 128,
+        "generation_tokens": 8,
+        "prompt_tps": 264.649062162745,
+        "generation_tps": 33.800787664005746,
+        "peak_memory_gb": 19.750177203,
+        "cache_bytes": 33709440,
+        "backend": "mlx_quant"
+      },
+      {
+        "prompt_tokens": 128,
+        "generation_tokens": 8,
+        "prompt_tps": 256.5181666967023,
+        "generation_tps": 32.095296326780044,
+        "peak_memory_gb": 19.750177203,
+        "cache_bytes": 33709440,
+        "backend": "mlx_quant"
+      }
+    ]
+  }
+]
