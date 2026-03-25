@@ -1,0 +1,13 @@
+[
+  {
+    "prompt_tokens": 4096,
+    "generation_tokens": 8,
+    "prompt_tps": 498.382593712203,
+    "generation_tps": 47.8464008999996,
+    "generation_wall_time_s": 8.552346458000102,
+    "peak_memory_gb": 21.698467476,
+    "cache_bytes": 57221600,
+    "backend": "turboquant",
+    "model_load_time_s": 5.286209625000083
+  }
+]

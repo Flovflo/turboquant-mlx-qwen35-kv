@@ -32,9 +32,36 @@ This repo focuses on the runtime KV cache path only. It does not touch the model
 
 ## Quick results
 
-Same model, one backend at a time, safe for a ~30 GB Apple Silicon machine.
+Same exact model. Same machine class. One backend at a time. Safe for a ~30 GB Apple Silicon machine.
 
-Short context: `128 prompt / 8 gen`, `3 trials`
+### Best result today
+
+`2048 prompt / 8 gen`, `3 trials`, exact model `mlx-community/Qwen3.5-35B-A3B-4bit`
+
+```text
+backend      prompt_tps   generation_tps   gen_wall_s   cache
+baseline     514.34       35.67            5.67         80.12 MB
+mlx_quant    516.13       38.30            5.16         44.77 MB
+turboquant   679.14       44.83            4.20         45.10 MB
+```
+
+TurboQuant vs baseline on this benchmark:
+
+- `+32.0%` prompt throughput
+- `+25.7%` decode throughput
+- `-26.0%` generation wall time
+- `-43.7%` KV cache size
+
+TurboQuant vs current MLX KV quantization on this benchmark:
+
+- `+31.6%` prompt throughput
+- `+17.1%` decode throughput
+- `-18.5%` generation wall time
+- cache size within `+0.73%`
+
+### Short-context reality check
+
+`128 prompt / 8 gen`, `3 trials`
 
 ```text
 backend      prompt_tps   generation_tps   gen_wall_s   cache
@@ -43,7 +70,11 @@ mlx_quant    274.53       52.20            0.87         33.71 MB
 turboquant   266.08       52.65            1.09         33.73 MB
 ```
 
-Longer context where KV compression matters more: `1024 prompt / 8 gen`, `1 trial`
+At short context, TurboQuant is mainly a memory optimization. At longer context, it starts to behave like the use case described in the Google TurboQuant announcement.
+
+### Longer-context checkpoint
+
+`1024 prompt / 8 gen`, `1 trial`
 
 ```text
 backend      prompt_tps   generation_tps   gen_wall_s   cache
@@ -51,16 +82,6 @@ baseline     378.00       28.98            6.29         59.15 MB
 mlx_quant    471.34       49.89            2.57         38.87 MB
 turboquant   490.29       50.65            2.43         39.04 MB
 ```
-
-Why this matters:
-
-- at `128` tokens, `turboquant` is mainly a memory play: `-11.6%` KV cache vs baseline
-- at `1024` tokens, `turboquant` starts behaving like the paper’s regime:
-- `+29.7%` prompt throughput vs baseline
-- `+74.8%` decode throughput vs baseline
-- `-61.4%` generation wall time vs baseline
-- `-34.0%` KV cache vs baseline
-- `turboquant` also edges out `mlx_quant` at `1024` on this run: `+4.0%` prompt throughput and `+1.5%` decode throughput
 
 ## Install and try
 
