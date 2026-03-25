@@ -13,11 +13,11 @@ def synthetic_prompt(vocab_size: int, prompt_tokens: int, seed: int = 0):
     return mx.random.randint(0, vocab_size, (prompt_tokens,), dtype=mx.int32)
 
 
-def run_benchmark(model, config, prompt_tokens: int, generation_tokens: int, kv_bits: int, kv_group_size: int):
+def run_benchmark(model, config, prompt_tokens: int, generation_tokens: int, kv_bits: int, kv_group_size: int, backends=("baseline", "mlx_quant", "turboquant")):
     vocab_size = config.get("vocab_size") or config["text_config"]["vocab_size"]
     prompt = synthetic_prompt(vocab_size, prompt_tokens)
     results = []
-    for backend in ("baseline", "mlx_quant", "turboquant"):
+    for backend in backends:
         turbo = TurboQuantConfig(bits=kv_bits, group_size=kv_group_size)
         _, _, stats = generate_tokens(
             model,

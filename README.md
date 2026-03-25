@@ -101,43 +101,56 @@ TurboQuant-inspired generation:
 
 ## Benchmarks
 
-32 prompt tokens, 4 generation tokens:
+Recommended low-RAM benchmark flow: one backend at a time.
+
+Baseline:
 
 ```bash
 ./.venv/bin/tqkv benchmark \
   mlx-community/Qwen3.5-35B-A3B-4bit \
-  --prompt-tokens 32 \
-  --generation-tokens 4 \
-  --output benchmarks/benchmark_32_4.json
-```
-
-Observed result:
-
-```text
-backend      prompt_tps   generation_tps   peak_memory_gb   cache_bytes
-baseline     11.51        22.07            19.594           38174720
-mlx_quant    101.24       25.70            19.595           33133440
-turboquant   109.21       9.80             19.993           62779096
-```
-
-128 prompt tokens, 8 generation tokens:
-
-```bash
-./.venv/bin/tqkv benchmark \
-  mlx-community/Qwen3.5-35B-A3B-4bit \
+  --backend baseline \
   --prompt-tokens 128 \
   --generation-tokens 8 \
-  --output benchmarks/benchmark_128_8.json
+  --output benchmarks/baseline_128_8.json
 ```
 
-Observed result:
+MLX quantized KV:
+
+```bash
+./.venv/bin/tqkv benchmark \
+  mlx-community/Qwen3.5-35B-A3B-4bit \
+  --backend mlx_quant \
+  --prompt-tokens 128 \
+  --generation-tokens 8 \
+  --output benchmarks/mlx_quant_128_8.json
+```
+
+TurboQuant-inspired KV:
+
+```bash
+./.venv/bin/tqkv benchmark \
+  mlx-community/Qwen3.5-35B-A3B-4bit \
+  --backend turboquant \
+  --prompt-tokens 128 \
+  --generation-tokens 8 \
+  --output benchmarks/turboquant_128_8.json
+```
+
+Observed sequential results on this machine:
 
 ```text
 backend      prompt_tps   generation_tps   peak_memory_gb   cache_bytes
-baseline     52.27        27.96            19.750           38174720
-mlx_quant    236.25       37.59            19.750           33709440
-turboquant   217.10       10.15            20.015           63375096
+baseline     46.51        38.18            19.750           38174720
+mlx_quant    65.42        36.97            19.750           33709440
+turboquant   50.87        30.73            19.709           33717540
 ```
+
+Saved artifacts:
+
+- `benchmarks/baseline_128_8.json`
+- `benchmarks/mlx_quant_128_8.json`
+- `benchmarks/turboquant_128_8.json`
+- `benchmarks/summary_128_8.json`
 
 ## What the prototype implements
 
@@ -155,8 +168,8 @@ turboquant   217.10       10.15            20.015           63375096
 - The main quantizer is MLX affine quantization, not PolarQuant.
 - The residual correction is a simple packed sign sketch with RMS scaling, not a faithful QJL estimator.
 - The implementation patches only the Qwen3.5 attention path loaded via `mlx-lm`, not every model family in the MLX ecosystem.
-- The residual sketch currently improves prefill throughput in this prototype but hurts decode throughput.
-- The current experimental backend does not beat MLX's built-in KV quantization on memory or decode speed.
+- The residual sketch is deliberately lightweight for MLX and is not a faithful QJL estimator.
+- The current experimental backend is now close to `mlx_quant` in memory footprint, but still trails it in decode throughput.
 - Cache bytes are reported honestly from the live cache state. For short prompts they can stay flat because upstream `KVCache` grows in 256-token blocks.
 
 ## Status

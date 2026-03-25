@@ -17,7 +17,7 @@ class TurboQuantConfig:
     group_size: int = 64
     value_bits: int = 4
     quantize_values: bool = True
-    sketch_dim: int = 16
+    sketch_dim: int = 8
     residual_scale: float = 1.0
     seed: int = 0
 

@@ -62,6 +62,7 @@ def turboquant_scaled_dot_product_attention(
         )
     else:
         out = mx.matmul(weights, value_state)
+    out = out.astype(queries.dtype)
     if n_repeats > 1:
         out = mx.reshape(out, (B, n_q_heads, out.shape[-2], out.shape[-1]))
     return out
