@@ -10,17 +10,108 @@ tags:
   - turboquant
 ---
 
-# TurboQuant MLX Prototype
+# TurboQuant MLX for Qwen3.5
 
-Experimental MLX KV-cache compression project inspired by Google's TurboQuant for the exact model `mlx-community/Qwen3.5-35B-A3B-4bit`.
+TurboQuant-inspired KV-cache compression for the exact MLX model [`mlx-community/Qwen3.5-35B-A3B-4bit`](https://huggingface.co/mlx-community/Qwen3.5-35B-A3B-4bit).
 
-This repo focuses on the runtime KV cache path only:
+If you want something simple to try:
 
-- it does not replace the model's existing MLX 4-bit weight quantization
-- it targets long-context efficiency during prefill and decode
-- it uses the exact Qwen3.5 MLX model as the integration target
+- install it
+- load the real Qwen3.5 MLX model
+- compare `baseline`, `mlx_quant`, and `turboquant`
+- measure actual Apple Silicon results instead of CUDA assumptions
 
-Three backends are exposed:
+This repo focuses on the runtime KV cache path only. It does not touch the model’s existing MLX 4-bit weights.
+
+## Why test this repo
+
+- Exact target model, not a toy checkpoint.
+- Real CLI, real benchmarks, real cache backend.
+- Direct inspiration from Google Research TurboQuant.
+- Clean side-by-side comparison against current MLX KV quantization.
+
+## Quick results
+
+Sequential benchmark on the exact target model with `128 prompt tokens / 8 generation tokens`:
+
+```text
+backend      prompt_tps   generation_tps   peak_memory_gb   cache_bytes
+baseline     46.51        38.18            19.750           38174720
+mlx_quant    65.42        36.97            19.750           33709440
+turboquant   50.87        30.73            19.709           33717540
+```
+
+What that means right now:
+
+- `turboquant` already closes the KV memory gap versus baseline
+- `turboquant` lands almost exactly on the same KV footprint as `mlx_quant`
+- `mlx_quant` is still ahead in decode throughput
+- the repo is already useful to install, test, compare, and iterate on
+
+## Install and try
+
+```bash
+python3 -m venv .venv
+./.venv/bin/pip install --upgrade pip setuptools wheel
+./.venv/bin/pip install -e '.[dev]'
+```
+
+Smoke test:
+
+```bash
+./.venv/bin/pytest -q
+```
+
+Run the exact model:
+
+```bash
+./.venv/bin/tqkv generate \
+  mlx-community/Qwen3.5-35B-A3B-4bit \
+  'Hi, what can you help me with?' \
+  --backend baseline \
+  --max-tokens 1
+```
+
+Run the TurboQuant-inspired backend:
+
+```bash
+./.venv/bin/tqkv generate \
+  mlx-community/Qwen3.5-35B-A3B-4bit \
+  'Hi, what can you help me with?' \
+  --backend turboquant \
+  --max-tokens 2
+```
+
+Run low-RAM benchmarks one backend at a time:
+
+```bash
+./.venv/bin/tqkv benchmark \
+  mlx-community/Qwen3.5-35B-A3B-4bit \
+  --backend baseline \
+  --prompt-tokens 128 \
+  --generation-tokens 8 \
+  --output benchmarks/baseline_128_8.json
+```
+
+```bash
+./.venv/bin/tqkv benchmark \
+  mlx-community/Qwen3.5-35B-A3B-4bit \
+  --backend mlx_quant \
+  --prompt-tokens 128 \
+  --generation-tokens 8 \
+  --output benchmarks/mlx_quant_128_8.json
+```
+
+```bash
+./.venv/bin/tqkv benchmark \
+  mlx-community/Qwen3.5-35B-A3B-4bit \
+  --backend turboquant \
+  --prompt-tokens 128 \
+  --generation-tokens 8 \
+  --output benchmarks/turboquant_128_8.json
+```
+
+## Backends
 
 - `baseline`: regular KV cache
 - `mlx_quant`: existing MLX affine KV quantization
@@ -117,52 +208,12 @@ tests/
 benchmarks/
 ```
 
-## Setup
-
-```bash
-python3 -m venv .venv
-./.venv/bin/pip install --upgrade pip setuptools wheel
-./.venv/bin/pip install -e '.[dev]'
-```
-
-## Smoke tests
-
-```bash
-./.venv/bin/pytest -q
-```
-
-Result on this machine:
-
-```text
-2 passed, 2 warnings in 2.01s
-```
-
 ## CLI
 
 Help:
 
 ```bash
 ./.venv/bin/tqkv --help
-```
-
-Text generation on the exact target model:
-
-```bash
-./.venv/bin/tqkv generate \
-  mlx-community/Qwen3.5-35B-A3B-4bit \
-  'Hi, what can you help me with?' \
-  --backend baseline \
-  --max-tokens 1
-```
-
-TurboQuant-inspired generation:
-
-```bash
-./.venv/bin/tqkv generate \
-  mlx-community/Qwen3.5-35B-A3B-4bit \
-  'Hi, what can you help me with?' \
-  --backend turboquant \
-  --max-tokens 2
 ```
 
 ## Benchmarks
