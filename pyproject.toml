@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "turboquant-mlx"
+version = "0.1.0"
+description = "Experimental TurboQuant-inspired KV cache prototype for MLX models."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "mlx-lm>=0.31.1",
+  "mlx-vlm>=0.4.1",
+  "huggingface_hub>=1.7.0",
+  "rich>=14.0.0",
+  "typer>=0.24.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0.0"]
+
+[project.scripts]
+tqkv = "turboquant_mlx.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["turboquant_mlx*"]
