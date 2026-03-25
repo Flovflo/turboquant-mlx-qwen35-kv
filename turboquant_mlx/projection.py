@@ -25,10 +25,16 @@ def make_projection(dim: int, sketch_dim: int, seed: int) -> ProjectionSpec:
 
 
 def apply_rotation(x: mx.array, spec: ProjectionSpec) -> mx.array:
-    flipped = x.astype(mx.float32) * spec.signs
+    signs = spec.signs.astype(x.dtype) if spec.signs.dtype != x.dtype else spec.signs
+    flipped = x * signs
     return mx.take(flipped, spec.perm, axis=-1)
 
 
 def apply_sketch(x: mx.array, spec: ProjectionSpec) -> mx.array:
-    projected = mx.take(x.astype(mx.float32), spec.sketch_idx, axis=-1)
-    return projected * spec.sketch_signs
+    sketch_signs = (
+        spec.sketch_signs.astype(x.dtype)
+        if spec.sketch_signs.dtype != x.dtype
+        else spec.sketch_signs
+    )
+    projected = mx.take(x, spec.sketch_idx, axis=-1)
+    return projected * sketch_signs

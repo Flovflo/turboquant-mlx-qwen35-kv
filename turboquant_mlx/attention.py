@@ -4,10 +4,8 @@ from typing import Optional
 
 import mlx.core as mx
 from mlx.utils import tree_map
-from mlx_lm.models.base import quantized_scaled_dot_product_attention
 
 from .cache import TurboQuantKVCache
-from .packing import unpack_sign_bits
 from .projection import apply_rotation
 
 
@@ -19,7 +17,7 @@ def turboquant_scaled_dot_product_attention(
     scale: float,
     mask: Optional[mx.array],
 ):
-    q_keys, residual_bits, residual_rms = key_state
+    q_keys, residual_t = key_state
     B, n_q_heads, _, D = queries.shape
     n_kv_heads = q_keys[0].shape[-3]
     n_repeats = n_q_heads // n_kv_heads
@@ -27,8 +25,7 @@ def turboquant_scaled_dot_product_attention(
     if n_repeats > 1:
         q = mx.reshape(q, (B, n_kv_heads, n_repeats, q.shape[-2], D))
         q_keys = tree_map(lambda x: mx.expand_dims(x, axis=-3), q_keys)
-        residual_bits = mx.expand_dims(residual_bits, axis=-3)
-        residual_rms = mx.expand_dims(residual_rms, axis=-3)
+        residual_t = mx.expand_dims(residual_t, axis=2)
         if cache.config.quantize_values:
             value_state = tree_map(lambda x: mx.expand_dims(x, axis=-3), value_state)
         else:
@@ -41,11 +38,10 @@ def turboquant_scaled_dot_product_attention(
         group_size=cache.group_size,
         bits=cache.config.bits,
     )
-    q_proj = mx.take(q_rot.astype(mx.float32), cache.projection.sketch_idx, axis=-1)
-    q_proj = q_proj * cache.projection.sketch_signs
-    k_sign = unpack_sign_bits(residual_bits, cache.config.sketch_dim)
-    residual = mx.matmul(q_proj, mx.swapaxes(k_sign * residual_rms, -1, -2))
-    scores = scores + cache.config.residual_scale * residual
+    q_proj = mx.take(q_rot, cache.projection.sketch_idx, axis=-1)
+    sketch_signs = cache.projection.sketch_signs.astype(q_proj.dtype)
+    residual = mx.matmul(q_proj * sketch_signs, residual_t).astype(scores.dtype)
+    scores = scores + (cache.config.residual_scale * residual)
     if mask is not None:
         if isinstance(mask, str):
             qL, kL = scores.shape[-2:]

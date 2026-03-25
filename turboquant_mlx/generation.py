@@ -20,6 +20,7 @@ class GenerationStats:
     generation_tokens: int
     prompt_tps: float
     generation_tps: float
+    generation_wall_time_s: float
     peak_memory_gb: float
     cache_bytes: int
     backend: str
@@ -72,6 +73,7 @@ def generate_tokens(model, prompt_tokens, *, max_tokens=16, backend: Backend = "
     turbo_config = turbo_config or TurboQuantConfig(bits=kv_bits, group_size=kv_group_size)
     prompt_cache = make_prompt_cache(model)
     prompt = prompt_tokens
+    total_start = time.perf_counter()
     t0 = time.perf_counter()
     processed = 0
     while prompt.size - processed > 1:
@@ -91,8 +93,9 @@ def generate_tokens(model, prompt_tokens, *, max_tokens=16, backend: Backend = "
         maybe_convert_cache(prompt_cache, backend, quantized_kv_start, kv_bits, kv_group_size, turbo_config)
         generated.append(int(next_token.item()))
     decode_tps = len(generated) / max(time.perf_counter() - decode_start, 1e-6)
+    total_wall = time.perf_counter() - total_start
     cache_bytes = cache_nbytes(prompt_cache)
-    stats = GenerationStats(prompt.size, len(generated), prompt_tps, decode_tps, mx.get_peak_memory() / 1e9, cache_bytes, backend)
+    stats = GenerationStats(prompt.size, len(generated), prompt_tps, decode_tps, total_wall, mx.get_peak_memory() / 1e9, cache_bytes, backend)
     return mx.array(generated), logprobs, stats
 
 

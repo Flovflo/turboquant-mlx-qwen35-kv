@@ -32,26 +32,35 @@ This repo focuses on the runtime KV cache path only. It does not touch the model
 
 ## Quick results
 
-Sequential benchmark on the exact target model with `128 prompt tokens / 8 generation tokens`.
+Same model, one backend at a time, safe for a ~30 GB Apple Silicon machine.
 
-Steady-state view, averaged from runs 2 and 3 after MLX warmup:
+Short context: `128 prompt / 8 gen`, `3 trials`
 
 ```text
-backend      prompt_tps   generation_tps   peak_memory_gb   cache_bytes
-baseline     257.33       33.84            -                38.17 MB
-mlx_quant    260.58       32.95            -                33.71 MB
-turboquant   251.84       28.04            -                33.72 MB
+backend      prompt_tps   generation_tps   gen_wall_s   cache
+baseline     270.47       54.32            0.93         38.17 MB
+mlx_quant    274.53       52.20            0.87         33.71 MB
+turboquant   266.08       52.65            1.09         33.73 MB
 ```
 
-What that means right now:
+Longer context where KV compression matters more: `1024 prompt / 8 gen`, `1 trial`
 
-- `turboquant` already closes the KV memory gap versus baseline
-- `turboquant` lands almost exactly on the same KV footprint as `mlx_quant`
-- `mlx_quant` and `turboquant` both reduce KV cache footprint by about `11.7%` versus baseline on this setup
-- `mlx_quant` is still ahead in decode throughput
-- the repo is already useful to install, test, compare, and iterate on
+```text
+backend      prompt_tps   generation_tps   gen_wall_s   cache
+baseline     378.00       28.98            6.29         59.15 MB
+mlx_quant    471.34       49.89            2.57         38.87 MB
+turboquant   490.29       50.65            2.43         39.04 MB
+```
 
-Cold-start 3-trial average is also recorded in the benchmark JSON artifacts.
+Why this matters:
+
+- at `128` tokens, `turboquant` is mainly a memory play: `-11.6%` KV cache vs baseline
+- at `1024` tokens, `turboquant` starts behaving like the paper’s regime:
+- `+29.7%` prompt throughput vs baseline
+- `+74.8%` decode throughput vs baseline
+- `-61.4%` generation wall time vs baseline
+- `-34.0%` KV cache vs baseline
+- `turboquant` also edges out `mlx_quant` at `1024` on this run: `+4.0%` prompt throughput and `+1.5%` decode throughput
 
 ## Install and try
 
@@ -116,6 +125,17 @@ Run low-RAM benchmarks one backend at a time:
   --output benchmarks/turboquant_128_8.json
 ```
 
+Longer-context sanity check:
+
+```bash
+./.venv/bin/tqkv benchmark \
+  mlx-community/Qwen3.5-35B-A3B-4bit \
+  --backend turboquant \
+  --prompt-tokens 1024 \
+  --generation-tokens 8 \
+  --output benchmarks/turboquant_1024_8.json
+```
+
 ## Backends
 
 - `baseline`: regular KV cache
@@ -145,30 +165,31 @@ This repository is the MLX / Apple Silicon translation of that idea:
 - different runtime reality: MLX kernels, Apple unified memory, Qwen3.5 mixed full-attention + linear-attention stack
 - honest goal: build a runnable TurboQuant-inspired prototype first, then close the gap to the paper
 
-## What Google reports vs what this repo currently achieves
+## Why Google shows larger speedups
 
-Google's TurboQuant claims are about a production-grade algorithmic stack built around PolarQuant and QJL.
+Google's blog reports speedups for attention-logit computation on long contexts, on H100 GPUs, with a production-grade TurboQuant stack built around PolarQuant and QJL.
 
-This repo does not claim to reproduce those paper-level numbers yet.
+This repo is different in four important ways:
 
-What it does provide is:
+- it runs on Apple Silicon with MLX, not CUDA / H100
+- it targets the exact `mlx-community/Qwen3.5-35B-A3B-4bit` stack, which mixes full-attention and linear-attention layers
+- only the full-attention layers benefit from KV-cache acceleration here
+- it is still a `TurboQuant-inspired` prototype, not a faithful PolarQuant + QJL kernel implementation
+
+That means the right comparison is not "why isn't `128` tokens 8x faster?", but "does the backend improve once KV-cache work starts to dominate?".
+
+On this repo today, the answer is:
+
+- short context: mostly memory savings
+- longer context: real throughput gains appear
+- the remaining gap to the paper is mostly kernel quality and algorithm fidelity, not the high-level direction
+
+What the repo already provides is still valuable:
 
 - a real experimental `TurboQuantKVCache`
 - integration with the exact MLX Qwen3.5 model
 - reproducible baseline vs MLX-quantized vs TurboQuant-inspired comparisons
 - measured Apple Silicon results instead of CUDA/H100 assumptions
-
-Current local benchmark at `128 prompt / 8 decode` on the exact target model:
-
-- `baseline`: `cache_bytes=38174720`, `prompt_tps=46.51`, `generation_tps=38.18`
-- `mlx_quant`: `cache_bytes=33709440`, `prompt_tps=65.42`, `generation_tps=36.97`
-- `turboquant`: `cache_bytes=33717540`, `prompt_tps=50.87`, `generation_tps=30.73`
-
-So today the prototype already does something useful:
-
-- it closes the memory gap versus baseline KV cache
-- it lands almost exactly on the same KV footprint as current MLX KV quantization
-- it remains slower than `mlx_quant` in decode, which is the main remaining optimization target
 
 ## Model target
 

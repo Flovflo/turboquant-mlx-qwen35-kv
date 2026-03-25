@@ -7,7 +7,6 @@ import mlx.core as mx
 from mlx.utils import tree_map
 from mlx_lm.models.cache import _BaseCache, create_attention_mask
 
-from .packing import pack_sign_bits
 from .projection import ProjectionSpec, apply_rotation, apply_sketch, make_projection
 
 
@@ -17,7 +16,7 @@ class TurboQuantConfig:
     group_size: int = 64
     value_bits: int = 4
     quantize_values: bool = True
-    sketch_dim: int = 8
+    sketch_dim: int = 4
     residual_scale: float = 1.0
     seed: int = 0
 
@@ -29,8 +28,7 @@ class TurboQuantKVCache(_BaseCache):
         self.projection: Optional[ProjectionSpec] = None
         self.keys_main = None
         self.values_main = None
-        self.residual_bits = None
-        self.residual_rms = None
+        self.residual_t = None
         self.value_dtype = None
         self.bits = config.bits
         self.group_size = config.group_size
@@ -49,8 +47,11 @@ class TurboQuantKVCache(_BaseCache):
     def _append_array(self, current, update):
         return update if current is None else mx.concatenate([current, update], axis=2)
 
+    def _append_residual(self, current, update):
+        return update if current is None else mx.concatenate([current, update], axis=-1)
+
     def _quantize_keys(self, keys: mx.array):
-        rotated = apply_rotation(keys, self.projection).astype(mx.bfloat16)
+        rotated = apply_rotation(keys.astype(mx.bfloat16), self.projection)
         q_keys = mx.quantize(
             rotated,
             group_size=self.group_size,
@@ -63,10 +64,11 @@ class TurboQuantKVCache(_BaseCache):
             bits=self.config.bits,
         )
         residual = rotated.astype(mx.float32) - dequant.astype(mx.float32)
-        proj = apply_sketch(residual, self.projection)
-        bits = pack_sign_bits(proj >= 0)
+        proj = apply_sketch(residual, self.projection).astype(mx.bfloat16)
+        signs = mx.where(proj >= 0, 1.0, -1.0).astype(mx.bfloat16)
         rms = mx.sqrt(mx.mean(mx.square(residual), axis=-1, keepdims=True)).astype(mx.bfloat16)
-        return q_keys, bits, rms
+        residual_t = mx.swapaxes(signs * rms, -1, -2)
+        return q_keys, residual_t
 
     def _quantize_values(self, values: mx.array):
         self.value_group_size = self._effective_group_size(values.shape[-1])
@@ -90,18 +92,17 @@ class TurboQuantKVCache(_BaseCache):
     def update_and_fetch(self, keys: mx.array, values: mx.array):
         self._init_params(keys.shape[-1])
         self.value_dtype = values.dtype
-        q_keys, r_bits, r_rms = self._quantize_keys(keys)
+        q_keys, residual_t = self._quantize_keys(keys)
         q_values = self._quantize_values(values)
         self.keys_main = self._append_tuple(self.keys_main, q_keys)
         self.values_main = self._append_tuple(self.values_main, q_values) if self.config.quantize_values else self._append_array(self.values_main, q_values)
-        self.residual_bits = self._append_array(self.residual_bits, r_bits)
-        self.residual_rms = self._append_array(self.residual_rms, r_rms)
+        self.residual_t = self._append_residual(self.residual_t, residual_t)
         self.offset += keys.shape[2]
         return self.key_state, self.value_state
 
     @property
     def key_state(self):
-        return self.keys_main, self.residual_bits, self.residual_rms
+        return self.keys_main, self.residual_t
 
     @property
     def value_state(self):
@@ -109,11 +110,11 @@ class TurboQuantKVCache(_BaseCache):
 
     @property
     def state(self):
-        return [self.keys_main, self.values_main, self.residual_bits, self.residual_rms]
+        return [self.keys_main, self.values_main, self.residual_t]
 
     @state.setter
     def state(self, v):
-        self.keys_main, self.values_main, self.residual_bits, self.residual_rms = v
+        self.keys_main, self.values_main, self.residual_t = v
 
     @property
     def meta_state(self):
@@ -159,7 +160,7 @@ class TurboQuantKVCache(_BaseCache):
 
     @property
     def nbytes(self):
-        pieces = [self.residual_bits, self.residual_rms]
+        pieces = [self.residual_t]
         if self.keys_main is not None:
             pieces.extend(self.keys_main)
         if self.values_main is not None:
