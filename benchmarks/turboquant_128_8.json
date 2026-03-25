@@ -1,0 +1,11 @@
+[
+  {
+    "prompt_tokens": 128,
+    "generation_tokens": 8,
+    "prompt_tps": 50.86704635019998,
+    "generation_tps": 30.7301335294858,
+    "peak_memory_gb": 19.708719219,
+    "cache_bytes": 33717540,
+    "backend": "turboquant"
+  }
+]
