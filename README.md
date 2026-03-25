@@ -12,13 +12,79 @@ tags:
 
 # TurboQuant MLX Prototype
 
-Experimental KV-cache prototype for MLX models with three backends:
+Experimental MLX KV-cache compression project inspired by Google's TurboQuant for the exact model `mlx-community/Qwen3.5-35B-A3B-4bit`.
+
+This repo focuses on the runtime KV cache path only:
+
+- it does not replace the model's existing MLX 4-bit weight quantization
+- it targets long-context efficiency during prefill and decode
+- it uses the exact Qwen3.5 MLX model as the integration target
+
+Three backends are exposed:
 
 - `baseline`: regular KV cache
 - `mlx_quant`: existing MLX affine KV quantization
 - `turboquant`: TurboQuant-inspired rotated key cache plus residual sketch correction
 
-This project targets `mlx-community/Qwen3.5-35B-A3B-4bit` without changing its existing MLX 4-bit weights.
+## Why this repo exists
+
+In the Google Research TurboQuant announcement, Google positions TurboQuant as a runtime compression method for high-dimensional vectors, with KV-cache compression as a primary target. The blog highlights a two-stage design:
+
+1. a high-quality main quantizer after random rotation, based on PolarQuant
+2. a 1-bit residual correction based on QJL to remove attention-score bias
+
+According to the Google blog, TurboQuant can:
+
+- compress KV cache very aggressively
+- preserve model quality on long-context benchmarks
+- reach around 3-bit KV cache compression without fine-tuning
+- reduce KV memory by at least 6x on some reported tasks
+- improve attention-logit throughput on H100-class GPUs
+
+Source: [Google Research TurboQuant](https://research.google/blog/turboquant-redefining-ai-efficiency-with-extreme-compression/?utm_source=twitter&utm_medium=social&utm_campaign=social_post&utm_content=gr-acct)
+
+This repository is the MLX / Apple Silicon translation of that idea:
+
+- same target problem: KV cache bottlenecks
+- different runtime reality: MLX kernels, Apple unified memory, Qwen3.5 mixed full-attention + linear-attention stack
+- honest goal: build a runnable TurboQuant-inspired prototype first, then close the gap to the paper
+
+## What Google reports vs what this repo currently achieves
+
+Google's TurboQuant claims are about a production-grade algorithmic stack built around PolarQuant and QJL.
+
+This repo does not claim to reproduce those paper-level numbers yet.
+
+What it does provide is:
+
+- a real experimental `TurboQuantKVCache`
+- integration with the exact MLX Qwen3.5 model
+- reproducible baseline vs MLX-quantized vs TurboQuant-inspired comparisons
+- measured Apple Silicon results instead of CUDA/H100 assumptions
+
+Current local benchmark at `128 prompt / 8 decode` on the exact target model:
+
+- `baseline`: `cache_bytes=38174720`, `prompt_tps=46.51`, `generation_tps=38.18`
+- `mlx_quant`: `cache_bytes=33709440`, `prompt_tps=65.42`, `generation_tps=36.97`
+- `turboquant`: `cache_bytes=33717540`, `prompt_tps=50.87`, `generation_tps=30.73`
+
+So today the prototype already does something useful:
+
+- it closes the memory gap versus baseline KV cache
+- it lands almost exactly on the same KV footprint as current MLX KV quantization
+- it remains slower than `mlx_quant` in decode, which is the main remaining optimization target
+
+## Model target
+
+The exact model integrated here is [`mlx-community/Qwen3.5-35B-A3B-4bit`](https://huggingface.co/mlx-community/Qwen3.5-35B-A3B-4bit).
+
+That matters because this model is not a plain dense decoder:
+
+- it uses Qwen3.5 MoE text architecture
+- it mixes linear-attention layers and full-attention layers
+- only full-attention layers use the KV cache path targeted by this project
+
+This means the upside from KV compression is real, but structurally smaller than on a model where every layer is a standard full-attention KV layer.
 
 ## RAM safety
 
@@ -145,6 +211,20 @@ mlx_quant    65.42        36.97            19.750           33709440
 turboquant   50.87        30.73            19.709           33717540
 ```
 
+Relative to baseline on this run:
+
+- `mlx_quant` reduces KV bytes by about `11.7%`
+- `turboquant` reduces KV bytes by about `11.7%`
+- `mlx_quant` improves prompt throughput by about `40.7%`
+- `turboquant` improves prompt throughput by about `9.4%`
+- `turboquant` still trails baseline decode throughput by about `19.5%`
+
+Relative to current MLX KV quantization on this run:
+
+- `turboquant` matches memory almost exactly
+- `turboquant` is slower in decode
+- `turboquant` still needs kernel- and estimator-level work before it can challenge `mlx_quant`
+
 Saved artifacts:
 
 - `benchmarks/baseline_128_8.json`
@@ -157,7 +237,7 @@ Saved artifacts:
 - Reuses `mlx-lm` for model loading and Qwen3.5 text generation.
 - Patches Qwen3.5 attention dispatch at runtime so a custom cache backend can be consumed without forking `mlx-lm`.
 - Implements `TurboQuantKVCache` as a real backend, not a stub.
-- Applies a fixed random orthogonal transform to keys before the main quantizer.
+- Applies a lightweight structured random transform to keys before the main quantizer.
 - Uses affine MLX quantization for the main compressed key representation.
 - Stores a 1-bit residual sign sketch plus a residual RMS term for score correction.
 - Optionally quantizes values with the same MLX affine path.
@@ -172,6 +252,22 @@ Saved artifacts:
 - The current experimental backend is now close to `mlx_quant` in memory footprint, but still trails it in decode throughput.
 - Cache bytes are reported honestly from the live cache state. For short prompts they can stay flat because upstream `KVCache` grows in 256-token blocks.
 
+## Roadmap
+
+The next meaningful steps are:
+
+1. reduce decode overhead in `turboquant` so it can beat baseline on Apple Silicon
+2. improve the residual estimator so it gets closer to the QJL spirit without breaking MLX efficiency
+3. push beyond current MLX KV quantization rather than merely matching its memory footprint
+4. extend validation to longer prompts in a RAM-safe way on machines around 30 GB unified memory
+
 ## Status
 
-This repo is runnable and loads the exact target model end-to-end. The experimental backend is real, benchmarkable, and clearly labeled `TurboQuant-inspired`, but it is not yet a performance win over the existing MLX KV quantization path.
+This repo is runnable and loads the exact target model end-to-end. The experimental backend is real, benchmarkable, and clearly labeled `TurboQuant-inspired`.
+
+Today, the project should be read as:
+
+- a serious MLX adaptation of the TurboQuant direction
+- not yet a faithful reproduction of the Google algorithm
+- not yet better than the existing MLX KV quantization path
+- already useful as a clean benchmark and implementation base for pushing TurboQuant-style KV compression further on Apple Silicon
